@@ -1,5 +1,3 @@
-# https://github.com/BWFTIME/L2RMUSIC.git
-
 import asyncio
 
 import os
@@ -17,23 +15,27 @@ from L2RMUSIC.utils.database import is_on_off
 from L2RMUSIC.utils.formatters import time_to_seconds
 
 
-
 import os
 import glob
 import random
 import logging
+
+# Logging configuration (Assuming you want to use logging for better error tracking)
+# If logging is not configured elsewhere, you might want to add:
+# logging.basicConfig(level=logging.INFO)
 
 def cookie_txt_file():
     folder_path = f"{os.getcwd()}/cookies"
     filename = f"{os.getcwd()}/cookies/logs.csv"
     txt_files = glob.glob(os.path.join(folder_path, '*.txt'))
     if not txt_files:
+        # Changed print to logging.error
+        logging.error("No .txt files found in the specified folder.")
         raise FileNotFoundError("No .txt files found in the specified folder.")
     cookie_txt_file = random.choice(txt_files)
     with open(filename, 'a') as file:
         file.write(f'Choosen File : {cookie_txt_file}\n')
     return f"""cookies/{str(cookie_txt_file).split("/")[-1]}"""
-
 
 
 async def check_file_size(link):
@@ -48,7 +50,8 @@ async def check_file_size(link):
         )
         stdout, stderr = await proc.communicate()
         if proc.returncode != 0:
-            print(f'Error:\n{stderr.decode()}')
+            # Changed print to logging.error
+            logging.error(f'Error from yt-dlp check_file_size:\n{stderr.decode()}')
             return None
         return json.loads(stdout.decode())
 
@@ -65,7 +68,8 @@ async def check_file_size(link):
     
     formats = info.get('formats', [])
     if not formats:
-        print("No formats found.")
+        # Changed print to logging.error
+        logging.error("No formats found for size check.")
         return None
     
     total_size = parse_size(formats)
@@ -239,34 +243,40 @@ class YouTubeAPI:
             link = link.split("&")[0]
         ytdl_opts = {"quiet": True, "cookiefile" : cookie_txt_file()}
         ydl = yt_dlp.YoutubeDL(ytdl_opts)
-        with ydl:
-            formats_available = []
-            r = ydl.extract_info(link, download=False)
-            for format in r["formats"]:
-                try:
-                    str(format["format"])
-                except:
-                    continue
-                if not "dash" in str(format["format"]).lower():
+        try:
+            with ydl:
+                formats_available = []
+                r = ydl.extract_info(link, download=False)
+                for format in r["formats"]:
                     try:
-                        format["format"]
-                        format["filesize"]
-                        format["format_id"]
-                        format["ext"]
-                        format["format_note"]
+                        str(format["format"])
                     except:
                         continue
-                    formats_available.append(
-                        {
-                            "format": format["format"],
-                            "filesize": format["filesize"],
-                            "format_id": format["format_id"],
-                            "ext": format["ext"],
-                            "format_note": format["format_note"],
-                            "yturl": link,
-                        }
-                    )
-        return formats_available, link
+                    if not "dash" in str(format["format"]).lower():
+                        try:
+                            format["format"]
+                            format["filesize"]
+                            format["format_id"]
+                            format["ext"]
+                            format["format_note"]
+                        except:
+                            continue
+                        formats_available.append(
+                            {
+                                "format": format["format"],
+                                "filesize": format["filesize"],
+                                "format_id": format["format_id"],
+                                "ext": format["ext"],
+                                "format_note": format["format_note"],
+                                "yturl": link,
+                            }
+                        )
+            return formats_available, link
+        except Exception as e:
+            # Handle yt-dlp failures during format extraction
+            logging.error(f"Format extraction failed for {link}: {e}")
+            return [], link
+
 
     async def slider(
         self,
@@ -300,6 +310,9 @@ class YouTubeAPI:
         if videoid:
             link = self.base + link
         loop = asyncio.get_running_loop()
+        
+        # --- Start of Executor Helper Functions with Robust Error Handling ---
+        
         def audio_dl():
             ydl_optssx = {
                 "format": "bestaudio/best",
@@ -310,13 +323,17 @@ class YouTubeAPI:
                 "cookiefile" : cookie_txt_file(),
                 "no_warnings": True,
             }
-            x = yt_dlp.YoutubeDL(ydl_optssx)
-            info = x.extract_info(link, False)
-            xyz = os.path.join("downloads", f"{info['id']}.{info['ext']}")
-            if os.path.exists(xyz):
+            try:
+                x = yt_dlp.YoutubeDL(ydl_optssx)
+                info = x.extract_info(link, False)
+                xyz = os.path.join("downloads", f"{info['id']}.{info['ext']}")
+                if os.path.exists(xyz):
+                    return xyz
+                x.download([link])
                 return xyz
-            x.download([link])
-            return xyz
+            except Exception as e:
+                logging.error(f"Audio download failed for {link}: {e}")
+                return None
 
         def video_dl():
             ydl_optssx = {
@@ -328,13 +345,17 @@ class YouTubeAPI:
                 "cookiefile" : cookie_txt_file(),
                 "no_warnings": True,
             }
-            x = yt_dlp.YoutubeDL(ydl_optssx)
-            info = x.extract_info(link, False)
-            xyz = os.path.join("downloads", f"{info['id']}.{info['ext']}")
-            if os.path.exists(xyz):
+            try:
+                x = yt_dlp.YoutubeDL(ydl_optssx)
+                info = x.extract_info(link, False)
+                xyz = os.path.join("downloads", f"{info['id']}.{info['ext']}")
+                if os.path.exists(xyz):
+                    return xyz
+                x.download([link])
                 return xyz
-            x.download([link])
-            return xyz
+            except Exception as e:
+                logging.error(f"Video download failed for {link}: {e}")
+                return None
 
         def song_video_dl():
             formats = f"{format_id}+140"
@@ -350,8 +371,13 @@ class YouTubeAPI:
                 "prefer_ffmpeg": True,
                 "merge_output_format": "mp4",
             }
-            x = yt_dlp.YoutubeDL(ydl_optssx)
-            x.download([link])
+            try:
+                x = yt_dlp.YoutubeDL(ydl_optssx)
+                x.download([link])
+                return True # Return True on success
+            except Exception as e:
+                logging.error(f"Song video download failed for {link} with format {format_id}: {e}")
+                return None # Return None on failure
 
         def song_audio_dl():
             fpath = f"downloads/{title}.%(ext)s"
@@ -372,21 +398,34 @@ class YouTubeAPI:
                     }
                 ],
             }
-            x = yt_dlp.YoutubeDL(ydl_optssx)
-            x.download([link])
+            try:
+                x = yt_dlp.YoutubeDL(ydl_optssx)
+                x.download([link])
+                return True # Return True on success
+            except Exception as e:
+                logging.error(f"Song audio download failed for {link} with format {format_id}: {e}")
+                return None # Return None on failure
+                
+        # --- End of Executor Helper Functions ---
 
         if songvideo:
-            await loop.run_in_executor(None, song_video_dl)
+            success = await loop.run_in_executor(None, song_video_dl)
+            if success is None:
+                return None
             fpath = f"downloads/{title}.mp4"
             return fpath
         elif songaudio:
-            await loop.run_in_executor(None, song_audio_dl)
+            success = await loop.run_in_executor(None, song_audio_dl)
+            if success is None:
+                return None
             fpath = f"downloads/{title}.mp3"
             return fpath
         elif video:
             if await is_on_off(1):
                 direct = True
                 downloaded_file = await loop.run_in_executor(None, video_dl)
+                if downloaded_file is None: # Check for failure from executor
+                    return None
             else:
                 proc = await asyncio.create_subprocess_exec(
                     "yt-dlp",
@@ -405,17 +444,26 @@ class YouTubeAPI:
                 else:
                    file_size = await check_file_size(link)
                    if not file_size:
-                     print("None file Size")
-                     return
-                   total_size_mb = file_size / (1024 * 1024)
-                   if total_size_mb > 250:
-                     print(f"File size {total_size_mb:.2f} MB exceeds the 100MB limit.")
+                     # Changed print to logging.info
+                     logging.info("File size check failed or returned None.")
                      return None
+                   total_size_mb = file_size / (1024 * 1024)
+                   
+                   # FIX: Corrected inconsistent print message (250MB limit assumed)
+                   if total_size_mb > 250:
+                     logging.error(f"File size {total_size_mb:.2f} MB exceeds the 250MB limit.")
+                     return None
+                     
                    direct = True
                    downloaded_file = await loop.run_in_executor(None, video_dl)
+                   if downloaded_file is None: # Check for failure from executor
+                       return None
         else:
             direct = True
             downloaded_file = await loop.run_in_executor(None, audio_dl)
+            if downloaded_file is None: # Check for failure from executor
+                return None
+                
         return downloaded_file, direct
 
 
@@ -426,6 +474,3 @@ class YouTubeAPI:
 # 🔗 GitHub : https://github.com/BWFTIME/L2RMUSIC
 # 📢 Telegram Channel : https://t.me/BWF_MUSIC1 
 # ===========================================
-
-
-# ❤️ Love From ShrutiBots
