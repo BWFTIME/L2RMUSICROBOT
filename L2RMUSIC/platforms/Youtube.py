@@ -450,8 +450,8 @@ class YouTubeAPI:
                    total_size_mb = file_size / (1024 * 1024)
                    
                    # FIX: Corrected inconsistent print message (250MB limit assumed)
-                   if total_size_mb > 250:
-                     logging.error(f"File size {total_size_mb:.2f} MB exceeds the 250MB limit.")
+                   if total_size_mb > 1756:
+                     logging.error(f"File size {total_size_mb:.2f} MB exceeds the 1756MB limit.")
                      return None
                      
                    direct = True
